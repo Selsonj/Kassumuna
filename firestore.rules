@@ -1,0 +1,194 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - email: string (required, email format)
+    //
+    // Collection: artists
+    // Document ID: {artistId}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - email: string (required, email format)
+    //   - category: string (required)
+    //   - priceKz: number (required)
+    //   - imageUrl: string (required, uri format)
+    //   - bio: string (required)
+    //   - rating: number (required)
+    //   - deliveryTimeDays: number (required)
+    //
+    // Collection: orders
+    // Document ID: {orderId}
+    // Fields:
+    //   - id: string (required)
+    //   - artistId: string (required)
+    //   - artistName: string (required)
+    //   - from: string (required)
+    //   - to: string (required)
+    //   - occasion: string (required)
+    //   - instructions: string (required)
+    //   - contactEmail: string (required, email format)
+    //   - status: string (required, enum: ["Pendente", "Pago", "Concluido", "Cancelado"])
+    //   - proofUrl: string (optional, uri format)
+    //   - priceKz: number (required)
+    //   - createdAt: number (required)
+    //   - userId: string (optional, for tracking)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          (request.auth.token.email == "upgradeangola@gmail.com" && request.auth.token.email_verified == true) ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'client') == 'admin')
+        );
+    }
+
+    function isArtist() {
+      return isAuthenticated() && 
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'client') == 'artist') ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           exists(/databases/$(database)/documents/artists/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('artistId', 'none'))))
+        );
+    }
+
+    function getArtistId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.artistId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidContact(contact) {
+      return contact is string && (
+        contact.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") || 
+        contact.matches("^[0-9+ ]{7,20}$")
+      );
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*") || url.matches("^data:image/.*") || url.matches("^gs://.*"));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['id', 'name', 'email', 'role']) &&
+             data.id is string && data.name is string && data.name.size() < 100 &&
+             isValidEmail(data.email) && data.role in ['client', 'artist', 'admin'] &&
+             (!('artistId' in data) || data.artistId is string);
+    }
+
+    function isValidArtist(data) {
+      return hasRequiredFields(['id', 'name', 'email', 'category', 'priceKz', 'imageUrl', 'bio', 'rating', 'deliveryTimeDays']) &&
+             data.id is string && data.name is string && isValidEmail(data.email) &&
+             data.category is string &&
+             data.priceKz is number && data.priceKz > 0 &&
+             isValidUrl(data.imageUrl) && data.bio is string &&
+             data.rating is number && data.deliveryTimeDays is number;
+    }
+
+    function isValidOrder(data) {
+      return hasRequiredFields(['id', 'artistId', 'artistName', 'from', 'to', 'occasion', 'instructions', 'contactEmail', 'status', 'priceKz', 'createdAt']) &&
+             data.id is string && data.artistId is string && data.artistName is string &&
+             data.from is string && data.to is string && data.occasion is string &&
+             data.instructions is string && isValidContact(data.contactEmail) &&
+             data.status in ["Pendente", "Pago", "Concluido", "Cancelado"] &&
+             data.priceKz is number && data.createdAt is number &&
+             (!('proofUrl' in data) || isValidUrl(data.proofUrl)) &&
+             (!('videoUrl' in data) || isValidUrl(data.videoUrl)) &&
+             (!('userId' in data) || data.userId is string);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      (
+                        request.resource.data.role == 'client' || 
+                        request.auth.token.get('email', '') == "upgradeangola@gmail.com" ||
+                        (request.resource.data.role == 'artist' && 'artistId' in request.resource.data)
+                      );
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) && 
+                      (
+                        request.resource.data.role == resource.data.role || 
+                        request.auth.token.get('email', '') == "upgradeangola@gmail.com" ||
+                        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'client') == 'admin')
+                      );
+    }
+
+    match /artists/{artistId} {
+      allow read: if true; // Publicly readable
+      allow create: if isAdmin() && isValidArtist(request.resource.data);
+      allow update: if (
+                        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'client') == 'artist' && 
+                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('artistId', 'none') == artistId) ||
+                        isAdmin()
+                      ) && isValidArtist(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAdmin() || 
+                    (isAuthenticated() && resource.data.get('userId', 'none') == request.auth.uid) ||
+                    (isAuthenticated() && 
+                     exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'client') == 'artist' && 
+                     resource.data.artistId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('artistId', 'none'));
+      allow create: if isAdmin() || (isAuthenticated() && isValidOrder(request.resource.data));
+      allow update: if isAdmin() && (isValidOrder(request.resource.data) || true);
+      allow update: if isAuthenticated() && 
+                      exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'client') == 'artist' && 
+                      resource.data.artistId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('artistId', 'none') && 
+                      isValidOrder(request.resource.data) &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'videoUrl']); // Artist can only change status and videoUrl
+      allow delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

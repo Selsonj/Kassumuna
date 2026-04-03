@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["client", "artist", "admin"] },
+        "artistId": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "Artist": {
+      "title": "Artist",
+      "description": "A celebrity or artist on the platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "category": { "type": "string" },
+        "priceKz": { "type": "number" },
+        "imageUrl": { "type": "string", "format": "uri" },
+        "bio": { "type": "string" },
+        "rating": { "type": "number" },
+        "deliveryTimeDays": { "type": "number" }
+      },
+      "required": ["id", "name", "email", "category", "priceKz", "imageUrl", "bio", "rating", "deliveryTimeDays"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A video request order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "artistId": { "type": "string" },
+        "artistName": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "occasion": { "type": "string" },
+        "instructions": { "type": "string" },
+        "contactEmail": { "type": "string", "format": "email" },
+        "status": { "type": "string", "enum": ["Pendente", "Pago", "Concluido", "Cancelado"] },
+        "proofUrl": { "type": "string", "format": "uri" },
+        "videoUrl": { "type": "string", "format": "uri" },
+        "priceKz": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "artistId", "artistName", "from", "to", "occasion", "instructions", "contactEmail", "status", "priceKz", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "Collection of users"
+    },
+    "artists": {
+      "schema": "Artist",
+      "description": "Collection of artists"
+    },
+    "orders": {
+      "schema": "Order",
+      "description": "Collection of orders"
+    }
+  }
+}

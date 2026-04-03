@@ -1,0 +1,8 @@
+{
+  "name": "Kassumuna",
+  "description": "A primeira plataforma de vídeos personalizados focada no mercado de Angola, conectando fãs às suas celebridades favoritas.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
