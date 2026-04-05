@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Order, User } from '../types';
 import { StorageService } from '../services/storage';
-import { ChevronLeft, Download, Clock, CheckCircle2, AlertCircle, Play, XCircle } from 'lucide-react';
+import { ChevronLeft, Download, Clock, CheckCircle2, AlertCircle, Play, XCircle, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CustomerOrdersProps {
@@ -23,6 +23,27 @@ export const CustomerOrders: React.FC<CustomerOrdersProps> = ({ user, onBack }) 
 
     return () => unsubscribe();
   }, [user.id]);
+
+  const handleShare = async (videoUrl: string, artistName: string) => {
+    const shareData = {
+      title: `Vídeo da Kassumuna - ${artistName}`,
+      text: `Vê este vídeo incrível que recebi da Kassumuna!`,
+      url: videoUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(videoUrl);
+        alert('Link copiado para a área de transferência!');
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Error sharing:', err);
+      }
+    }
+  };
 
   const getStatusColor = (status: Order['status']) => {
     switch (status) {
@@ -111,17 +132,24 @@ export const CustomerOrders: React.FC<CustomerOrdersProps> = ({ user, onBack }) 
                 </div>
 
                 {order.status === 'Concluido' && order.videoUrl && (
-                  <div className="px-4 pb-4">
+                  <div className="px-4 pb-4 flex gap-2">
                     <a 
                       href={order.videoUrl} 
                       download={`kassumuna_${order.id}.mp4`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
+                      className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white text-[10px] font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
                     >
-                      <Download className="w-4 h-4" />
-                      DESCARREGAR VÍDEO
+                      <Download className="w-3.5 h-3.5" />
+                      DESCARREGAR
                     </a>
+                    <button 
+                      onClick={() => handleShare(order.videoUrl!, order.artistName)}
+                      className="flex-1 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      PARTILHAR
+                    </button>
                   </div>
                 )}
 
@@ -158,17 +186,31 @@ export const CustomerOrders: React.FC<CustomerOrdersProps> = ({ user, onBack }) 
               className="relative w-full max-w-sm aspect-[9/16] bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl"
               onClick={e => e.stopPropagation()}
             >
-              <video 
-                src={selectedVideo} 
-                className="w-full h-full object-contain"
-                controls
-                autoPlay
-              />
+              <div className="relative w-full h-full">
+                <video 
+                  key={selectedVideo}
+                  src={selectedVideo} 
+                  className="w-full h-full object-contain"
+                  controls
+                  autoPlay
+                  playsInline
+                  preload="auto"
+                />
+              </div>
               <button 
                 onClick={() => setSelectedVideo(null)}
-                className="absolute top-4 right-4 p-2 bg-black/50 backdrop-blur-md rounded-full text-white"
+                className="absolute top-4 right-4 p-2 bg-black/50 backdrop-blur-md rounded-full text-white z-50"
               >
                 <ChevronLeft className="w-6 h-6 rotate-180" />
+              </button>
+              <button 
+                onClick={() => {
+                  const order = orders.find(o => o.videoUrl === selectedVideo);
+                  handleShare(selectedVideo, order?.artistName || '');
+                }}
+                className="absolute bottom-4 right-4 p-3 bg-orange-600 rounded-full text-white shadow-lg z-50"
+              >
+                <Share2 className="w-6 h-6" />
               </button>
             </motion.div>
           </motion.div>

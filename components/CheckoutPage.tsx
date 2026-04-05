@@ -25,13 +25,31 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ order, onConfirm, on
     setIsUploading(true);
     setError(null);
     try {
-      const proofUrl = await StorageService.uploadProof(file);
+      console.log('Starting proof upload for order:', order.id);
+      const proofUrl = await StorageService.uploadProof(order.id, file);
+      console.log('Proof upload success:', proofUrl);
       onConfirm(proofUrl);
     } catch (err: any) {
-      console.error('Error uploading proof:', err);
-      setError('Erro ao carregar comprovativo. Tente novamente.');
+      console.error('CRITICAL: Proof upload failed, trying Base64 fallback:', err);
+      
+      // Fallback: If Storage fails, try to use Base64 if the file is small enough (< 800KB)
+      if (file.size < 800 * 1024) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          onConfirm(base64);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const errorMessage = err.code === 'storage/unauthorized' 
+          ? 'Sem permissão para carregar o comprovativo. Verifique as regras de segurança do Storage.'
+          : `Erro ao carregar comprovativo: ${err.message || 'Tente novamente.'}`;
+        setError(errorMessage);
+        setIsUploading(false);
+      }
     } finally {
-      setIsUploading(false);
+      // Note: setIsUploading(false) is called in onloadend for the fallback
+      if (file.size >= 800 * 1024) setIsUploading(false);
     }
   };
 

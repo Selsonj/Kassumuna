@@ -2,6 +2,8 @@
 import React from 'react';
 import { Order, User, Artist } from '../types';
 import { StorageService } from '../services/storage';
+import { Play, CheckCircle2, AlertCircle, Clock, Trash2, ChevronLeft, X, Share2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface ArtistDashboardProps {
   user: User;
@@ -17,8 +19,32 @@ export const ArtistDashboard: React.FC<ArtistDashboardProps> = ({ user, orders, 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [uploadingOrderId, setUploadingOrderId] = React.useState<string | null>(null);
+  const [viewingProofUrl, setViewingProofUrl] = React.useState<string | null>(null);
+  const [viewingVideoUrl, setViewingVideoUrl] = React.useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = React.useState<number>(0);
   const [videoFiles, setVideoFiles] = React.useState<Record<string, string>>({});
+
+  const handleShare = async (videoUrl: string) => {
+    const shareData = {
+      title: `Vídeo da Kassumuna`,
+      text: `Vê este vídeo que acabei de carregar na Kassumuna!`,
+      url: videoUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(videoUrl);
+        alert('Link copiado para a área de transferência!');
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Error sharing:', err);
+      }
+    }
+  };
+
   const [newArtist, setNewArtist] = React.useState({
     name: '',
     email: '',
@@ -106,14 +132,19 @@ export const ArtistDashboard: React.FC<ArtistDashboardProps> = ({ user, orders, 
       setUploadingOrderId(orderId);
       setUploadProgress(0);
       setError(null);
+      
       try {
+        console.log('Iniciando upload direto para o Firebase Storage:', orderId);
         const downloadUrl = await StorageService.uploadVideo(orderId, file, (progress) => {
           setUploadProgress(Math.round(progress));
         });
+        
+        console.log('Upload concluído com sucesso:', downloadUrl);
         setVideoFiles(prev => ({ ...prev, [orderId]: downloadUrl }));
-      } catch (err) {
-        console.error('Error uploading video:', err);
-        setError('Erro ao carregar o vídeo. Tenta novamente.');
+        
+      } catch (err: any) {
+        console.error('Erro no upload do vídeo:', err);
+        setError(`Erro ao carregar vídeo: ${err.message || 'Tente novamente.'}`);
       } finally {
         setUploadingOrderId(null);
         setUploadProgress(0);
@@ -395,9 +426,16 @@ export const ArtistDashboard: React.FC<ArtistDashboardProps> = ({ user, orders, 
                   <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-zinc-800 border-dashed rounded-xl cursor-pointer hover:bg-zinc-800 transition-colors">
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
                       {videoFiles[order.id] ? (
-                        <div className="flex items-center gap-2 text-green-500 text-xs font-bold uppercase">
+                        <div 
+                          className="flex items-center gap-2 text-green-500 text-xs font-bold uppercase"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setViewingVideoUrl(videoFiles[order.id]);
+                          }}
+                        >
                           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                          Vídeo Carregado
+                          Vídeo Carregado (Ver)
                         </div>
                       ) : uploadingOrderId === order.id ? (
                         <div className="flex flex-col items-center gap-2 text-orange-500 text-xs font-bold uppercase">
@@ -427,23 +465,103 @@ export const ArtistDashboard: React.FC<ArtistDashboardProps> = ({ user, orders, 
                 >
                   {isSubmitting ? 'A PROCESSAR...' : 'Confirmar Entrega'}
                 </button>
-                <a 
-                  href={order.proofUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className={`px-4 py-3 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition-colors flex items-center justify-center ${!order.proofUrl ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
+                <button 
+                  onClick={() => order.proofUrl && setViewingProofUrl(order.proofUrl)}
+                  className={`px-4 py-3 bg-zinc-800 rounded-xl hover:bg-zinc-700 transition-colors flex items-center justify-center ${!order.proofUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
                   title="Ver Comprovativo"
+                  disabled={!order.proofUrl}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
                     <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
                   </svg>
-                </a>
+                </button>
               </div>
             </div>
           ))
         )}
       </div>
+      {/* Modal para visualizar comprovativo */}
+      {viewingProofUrl && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative max-w-4xl w-full bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl border border-zinc-800">
+            <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+              <h3 className="font-bold">Comprovativo de Pagamento</h3>
+              <button 
+                onClick={() => setViewingProofUrl(null)}
+                className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="p-4 flex items-center justify-center bg-zinc-950 min-h-[300px] max-h-[70vh] overflow-auto">
+              {viewingProofUrl.startsWith('data:') ? (
+                <img src={viewingProofUrl} alt="Comprovativo" className="max-w-full h-auto rounded-lg" />
+              ) : (
+                <div className="text-center space-y-4">
+                  <p className="text-zinc-400 text-sm">O comprovativo está guardado no Storage.</p>
+                  <a 
+                    href={viewingProofUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-block bg-orange-500 text-white font-bold py-2 px-6 rounded-xl hover:bg-orange-600 transition-all"
+                  >
+                    Abrir em nova aba
+                  </a>
+                  <p className="text-[10px] text-zinc-600 max-w-xs mx-auto">
+                    Se receber um erro 412, significa que o Firebase Storage ainda está a processar as permissões.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para visualizar vídeo */}
+      <AnimatePresence>
+        {viewingVideoUrl && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4"
+            onClick={() => setViewingVideoUrl(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm aspect-[9/16] bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="relative w-full h-full">
+                <video 
+                  key={viewingVideoUrl}
+                  src={viewingVideoUrl} 
+                  className="w-full h-full object-contain"
+                  controls
+                  autoPlay
+                  playsInline
+                  preload="auto"
+                />
+              </div>
+              <button 
+                onClick={() => setViewingVideoUrl(null)}
+                className="absolute top-4 right-4 p-2 bg-black/50 backdrop-blur-md rounded-full text-white z-50"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              <button 
+                onClick={() => handleShare(viewingVideoUrl)}
+                className="absolute bottom-4 right-4 p-3 bg-orange-600 rounded-full text-white shadow-lg z-50"
+              >
+                <Share2 className="w-6 h-6" />
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

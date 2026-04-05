@@ -98,14 +98,18 @@ export const StorageService = {
   },
 
   // Orders
-  getOrders: async (userId?: string, artistId?: string): Promise<Order[]> => {
+  getOrders: async (userId?: string, artistId?: string, status?: Order['status']): Promise<Order[]> => {
     const path = 'orders';
     try {
       let q = query(collection(db, path), orderBy('createdAt', 'desc'));
       if (userId) {
         q = query(collection(db, path), where('userId', '==', userId), orderBy('createdAt', 'desc'));
       } else if (artistId) {
-        q = query(collection(db, path), where('artistId', '==', artistId), orderBy('createdAt', 'desc'));
+        if (status) {
+          q = query(collection(db, path), where('artistId', '==', artistId), where('status', '==', status), orderBy('createdAt', 'desc'));
+        } else {
+          q = query(collection(db, path), where('artistId', '==', artistId), orderBy('createdAt', 'desc'));
+        }
       }
       const snapshot = await getDocs(q);
       return snapshot.docs.map(doc => doc.data() as Order);
@@ -115,13 +119,17 @@ export const StorageService = {
     }
   },
 
-  subscribeToOrders: (callback: (orders: Order[]) => void, userId?: string, artistId?: string) => {
+  subscribeToOrders: (callback: (orders: Order[]) => void, userId?: string, artistId?: string, status?: Order['status']) => {
     const path = 'orders';
     let q = query(collection(db, path), orderBy('createdAt', 'desc'));
     if (userId) {
       q = query(collection(db, path), where('userId', '==', userId), orderBy('createdAt', 'desc'));
     } else if (artistId) {
-      q = query(collection(db, path), where('artistId', '==', artistId), orderBy('createdAt', 'desc'));
+      if (status) {
+        q = query(collection(db, path), where('artistId', '==', artistId), where('status', '==', status), orderBy('createdAt', 'desc'));
+      } else {
+        q = query(collection(db, path), where('artistId', '==', artistId), orderBy('createdAt', 'desc'));
+      }
     }
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(doc => doc.data() as Order));
@@ -170,75 +178,59 @@ export const StorageService = {
     return new Promise((resolve, reject) => {
       try {
         const storageRef = ref(storage, `orders/${orderId}/video_${Date.now()}`);
-        console.log('Starting upload for order:', orderId, 'File size:', file.size, 'Type:', file.type);
+        console.log('Starting video upload for order:', orderId, 'File size:', file.size);
         
-        // For small files (< 5MB), just use uploadBytes as it's faster and more reliable
-        if (file.size < 5 * 1024 * 1024) {
-          console.log('Small file detected (< 5MB), using uploadBytes');
-          if (onProgress) onProgress(50); // Fake progress for small files
-          uploadBytes(storageRef, file)
-            .then(async (snapshot) => {
-              if (onProgress) onProgress(100);
-              const url = await getDownloadURL(snapshot.ref);
-              resolve(url);
-            })
-            .catch(reject);
-          return;
-        }
-
         const uploadTask = uploadBytesResumable(storageRef, file);
-
-        // Set a safety timeout - if no progress after 20 seconds, something is wrong
-        const timeout = setTimeout(() => {
-          if (uploadTask.snapshot.bytesTransferred === 0) {
-            console.warn('Upload stuck at 0% for 20s, attempting to cancel and retry with uploadBytes');
-            uploadTask.cancel();
-            // Fallback to uploadBytes (no progress but might work)
-            uploadBytes(storageRef, file)
-              .then(async (snapshot) => {
-                const url = await getDownloadURL(snapshot.ref);
-                resolve(url);
-              })
-              .catch(reject);
-          }
-        }, 20000);
 
         uploadTask.on('state_changed', 
           (snapshot) => {
-            const progress = snapshot.totalBytes > 0 
-              ? (snapshot.bytesTransferred / snapshot.totalBytes) * 100 
-              : 0;
-            console.log(`Upload progress for ${orderId}: ${progress.toFixed(2)}% (${snapshot.bytesTransferred}/${snapshot.totalBytes}) - State: ${snapshot.state}`);
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            console.log(`Upload progress: ${progress.toFixed(2)}%`);
             if (onProgress) onProgress(progress);
           }, 
           (error) => {
-            clearTimeout(timeout);
-            console.error('Error uploading video for order:', orderId, error);
-            // If it's a permission error, let the user know
+            console.error('Error uploading video:', error);
             if (error.code === 'storage/unauthorized') {
-              reject(new Error('Sem permissão para carregar o vídeo. Verifique as regras de segurança do Storage.'));
+              reject(new Error('Sem permissão para carregar o vídeo. Verifique as regras de segurança do novo bucket.'));
             } else {
               reject(error);
             }
           }, 
           async () => {
-            clearTimeout(timeout);
-            console.log('Upload complete for order:', orderId);
+            console.log('Upload complete, getting download URL...');
             const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            console.log('Download URL obtained:', downloadUrl);
             resolve(downloadUrl);
           }
         );
       } catch (error) {
-        console.error('Error initializing upload:', error);
+        console.error('Error initializing video upload:', error);
         reject(error);
       }
     });
   },
 
-  uploadProof: async (file: File): Promise<string> => {
-    const storageRef = ref(storage, `proofs/proof_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`);
-    const snapshot = await uploadBytes(storageRef, file);
-    return await getDownloadURL(snapshot.ref);
+  uploadProof: (orderId: string, file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      try {
+        const storageRef = ref(storage, `orders/${orderId}/proof_${Date.now()}`);
+        const uploadTask = uploadBytesResumable(storageRef, file);
+        
+        uploadTask.on('state_changed', 
+          null,
+          (error) => {
+            console.error('Proof upload error:', error);
+            reject(error);
+          },
+          async () => {
+            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(downloadUrl);
+          }
+        );
+      } catch (error) {
+        reject(error);
+      }
+    });
   },
 
   deleteOrder: async (orderId: string): Promise<void> => {

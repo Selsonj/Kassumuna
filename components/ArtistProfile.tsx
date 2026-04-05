@@ -21,8 +21,8 @@ export const ArtistProfile: React.FC<ArtistProfileProps> = ({ artist, user, onBa
     const fetchVideos = async () => {
       setIsLoadingVideos(true);
       try {
-        const orders = await StorageService.getOrders(undefined, artist.id);
-        setCompletedOrders(orders.filter(o => o.status === 'Concluido' && o.videoUrl));
+        const orders = await StorageService.getOrders(undefined, artist.id, 'Concluido');
+        setCompletedOrders(orders.filter(o => o.videoUrl));
       } catch (err) {
         console.error('Error fetching artist videos:', err);
       } finally {
@@ -40,6 +40,27 @@ export const ArtistProfile: React.FC<ArtistProfileProps> = ({ artist, user, onBa
     { emoji: '🙋‍♂️', label: 'Pergunta' },
     { emoji: '💬', label: 'Outro' }
   ];
+
+  const handleShare = async (videoUrl: string, artistName: string) => {
+    const shareData = {
+      title: `Vídeo da Kassumuna - ${artistName}`,
+      text: `Vê este vídeo incrível que recebi da Kassumuna!`,
+      url: videoUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(videoUrl);
+        alert('Link copiado para a área de transferência!');
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Error sharing:', err);
+      }
+    }
+  };
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -90,6 +111,7 @@ export const ArtistProfile: React.FC<ArtistProfileProps> = ({ artist, user, onBa
               >
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10" />
                 <video 
+                  key={order.videoUrl}
                   src={order.videoUrl} 
                   className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity"
                   muted
@@ -130,17 +152,28 @@ export const ArtistProfile: React.FC<ArtistProfileProps> = ({ artist, user, onBa
               className="relative w-full max-w-sm aspect-[9/16] bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl"
               onClick={e => e.stopPropagation()}
             >
-              <video 
-                src={selectedVideo} 
-                className="w-full h-full object-contain"
-                controls
-                autoPlay
-              />
+              <div className="relative w-full h-full">
+                <video 
+                  key={selectedVideo}
+                  src={selectedVideo} 
+                  className="w-full h-full object-contain"
+                  controls
+                  autoPlay
+                  playsInline
+                  preload="auto"
+                />
+              </div>
               <button 
                 onClick={() => setSelectedVideo(null)}
-                className="absolute top-4 right-4 p-2 bg-black/50 backdrop-blur-md rounded-full text-white"
+                className="absolute top-4 right-4 p-2 bg-black/50 backdrop-blur-md rounded-full text-white z-50"
               >
                 <ChevronLeft className="w-6 h-6 rotate-180" />
+              </button>
+              <button 
+                onClick={() => handleShare(selectedVideo, artist.name)}
+                className="absolute bottom-4 right-4 p-3 bg-orange-600 rounded-full text-white shadow-lg z-50"
+              >
+                <Share2 className="w-6 h-6" />
               </button>
             </motion.div>
           </motion.div>

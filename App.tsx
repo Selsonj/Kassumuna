@@ -114,13 +114,16 @@ const App: React.FC = () => {
   };
 
   const handleOrderSubmit = (orderData: any) => {
-    setCurrentOrder(orderData);
+    const orderWithId = {
+      ...orderData,
+      id: Math.random().toString(36).substr(2, 9)
+    };
+    setCurrentOrder(orderWithId);
     setView('checkout');
   };
 
   const handlePaymentConfirm = async (proofUrl?: string) => {
     const newOrder: Order = {
-      id: Math.random().toString(36).substr(2, 9),
       ...currentOrder,
       proofUrl,
       status: 'Pago',

@@ -174,7 +174,8 @@ service cloud.firestore {
                     (isAuthenticated() && 
                      exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'client') == 'artist' && 
-                     resource.data.artistId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('artistId', 'none'));
+                     resource.data.artistId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('artistId', 'none')) ||
+                    (resource.data.status == 'Concluido'); // Permite que qualquer pessoa veja vídeos concluídos (Portfólio)
       allow create: if isAdmin() || (isAuthenticated() && isValidOrder(request.resource.data));
       allow update: if isAdmin() && (isValidOrder(request.resource.data) || true);
       allow update: if isAuthenticated() && 
